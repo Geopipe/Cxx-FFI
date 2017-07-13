@@ -118,33 +118,10 @@ class FFIFilter(object):
 			next_visitor = self.find_extern_C
 		self.visit_trampoline(cursor, next_visitor, indent)
 	
-	def find_typeref_config(self, handler):	
-		def find_typeref(cursor, indent = 0):
-			if cursor.kind in (CursorKind.TYPE_REF, CursorKind.TEMPLATE_REF):
-				handler(cursor, indent)
-				next_visitor = None
-			else:
-				next_visitor = find_typeref
-				
-			self.visit_trampoline(cursor, next_visitor, indent)
-		return find_typeref
-	
 	def find_exposed(self):
-		def show_found_type(cursor, indent):
-			pass #print (" " * indent), cursor.displayname, cursor.type.get_canonical().spelling
-		
-		exposed_handler = self.find_typeref_config(show_found_type)	
 		for func in self.foreign_functions.values():
 			func_type = func.type.get_canonical()
 			decompose_type(func_type,self.exposed_types)
-			#print func_type.spelling
-			parms = [n for n in func.get_children() if n.kind == CursorKind.PARM_DECL]
-			#print " returns",func.result_type.get_canonical().spelling
-			#print " consumes",[(n.type.get_canonical().spelling, [m.kind for m in n.get_children()]) for n in parms]
-			#print 
-			inspect = [func_type.get_result()] + list(func_type.argument_types())
-			#print [(t.spelling, t.is_pod()) for t in inspect]
-			#exposed_handler(func)
 			
 	def filter_namespaces(self, cursor, indent = 0):
 		ns_stack = []
