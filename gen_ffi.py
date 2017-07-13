@@ -227,7 +227,7 @@ def main(prog_path, libclang_path, api_header, pch_dst, api_casts_dst, namespace
 	else:
 		tu.save(pch_dst) # We'll need this in a minute, and there's no way to just get it in RAM
 		
-		filt = FFIFilter(lambda s: s[0] == accept_from,
+		filt = FFIFilter(lambda s: s[0] in accept_from,
 						 lambda x: x.displayname[:4] == "make" or x.displayname[:7] == "release",
 						 solve_template_base_config(index, pch_dst))
 		filt.filter_namespaces(tu.cursor)
