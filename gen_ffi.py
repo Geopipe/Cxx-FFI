@@ -40,13 +40,10 @@ def decompose_type(root_type, results):
 	root_kind = root_type.kind
 	children = []
 	if root_kind == TypeKind.FUNCTIONPROTO:
-		#print "decomposing a function:",root_name
 		children = [root_type.get_result()] + list(root_type.argument_types())
 	elif root_kind == TypeKind.POINTER:
-		#print "decomposing a pointer:",root_name
 		children = [root_type.get_pointee()]
 	elif root_type.is_pod() or (root_kind == TypeKind.VOID):
-		#print "uninteresting terminal:",root_name
 		pass
 	elif root_kind == TypeKind.RECORD:
 		results[root_name] = root_type
@@ -55,30 +52,70 @@ def decompose_type(root_type, results):
 	for child in children:
 		decompose_type(child,results)
 		
+
+		
 def solve_template_base_config(index, pch_dst):
-	def solve_template_base(the_type, the_template, known_base_typedefs, indent=0):
-		src_template = "\n".join("%stypedef typename %s::REFL_BASE%d REFL_ANS%d;" % (" "*(indent+2),the_type.spelling,d,d) for d in range(len(known_base_typedefs[the_template])))
-		print (" "*indent),"Resolving %s from %s" % (the_type.spelling, the_template)
-		print src_template
+	def refl_base(idx):	return "REFL_BASE%d" % idx
+	def refl_ans(idx): return "REFL_ANS%d" % idx
+	def expect_success(diagnostics):
+		if len(diagnostics): return CxxSyntaxError("\n".join(pprint.pformat(d) for d in diagnostics))
+		else: return True
+	
+	def expect_missing_base_or_success(the_type,idx):
+		def f(diagnostics):
+			actual_spelling = [d.spelling for d in diagnostics]
+			permitted_spelling = ["no type named '%s' in '%s" % (refl_base(idx), the_type.spelling)]
+			print "testing expect for: ", the_type.spelling, idx, actual_spelling, "==", permitted_spelling
+			if actual_spelling == permitted_spelling:
+				return []
+			else: return expect_success(diagnostics)
+		return f
+	
+	
+	def complete_ith_src(the_type, idx, indent):
+		return "%stypedef typename %s::%s %s;" % (" "*indent, the_type.spelling, refl_base(idx), refl_ans(idx));
+	
+	def extract_underlying_types_from_src(src, diag_expect, indent):
+		print src
 		tu2 = index.parse("answers.hpp",
 						  args=["-std=c++11","-include-pch",pch_dst],
-						  unsaved_files=[("answers.hpp",src_template)],
+						  unsaved_files=[("answers.hpp",src)],
 						  options = TranslationUnit.PARSE_INCOMPLETE | TranslationUnit.PARSE_SKIP_FUNCTION_BODIES)
-		diagnostics = list(tu2.diagnostics)
-		if len(diagnostics) > 0:
-			raise CxxSyntaxError("\n".join(pprint.pformat(d) for d in diagnostics))
-		else:
+		expected_result = diag_expect(list(tu2.diagnostics))
+		if isinstance(expected_result, BaseException): #len(diagnostics) > 0:
+			raise expected_result #CxxSyntaxError("\n".join(pprint.pformat(d) for d in diagnostics))
+		elif expected_result:
 			def printA(c, i, r):
-				#print (" "*i), c.displayname
 				if c.kind == CursorKind.TYPEDEF_DECL:
 					ans_here = c.underlying_typedef_type.get_canonical()
-					#print (" " * (i + 1)), ans_here
 					return r + [ans_here]
 				else:
 					for d in c.get_children():
 						r = printA(d, i+1, r)
 					return r
 			return printA(tu2.cursor, indent, [])
+		else:
+			return expected_result
+	
+	def solve_template_base(the_type, the_template, known_base_typedefs, indent=0):
+		if the_template:
+			src_template = "\n".join(complete_ith_src(the_type, idx, indent+2) for idx in range(len(known_base_typedefs[the_template])))
+			print (" "*indent),"Resolving %s from %s" % (the_type.spelling, the_template)
+			return extract_underlying_types_from_src(src_template, expect_success, indent)
+		else:
+			out = []
+			idx = 0
+			while True:
+				next_base = extract_underlying_types_from_src(
+					complete_ith_src(the_type, indent+2, idx),
+					expect_missing_base_or_success(the_type, idx),
+					indent)
+				if next_base:
+					out += next_base
+					idx += 1
+				else:
+					return out
+				
 	return solve_template_base
 
 class FFIFilter(object):
@@ -135,7 +172,6 @@ class FFIFilter(object):
 					next_visitor = None
 				need_pop = True
 			else:
-				#print (" "*indent), cursor.displayname
 				need_pop = False
 			self.visit_trampoline(cursor, next_visitor, indent)
 			if need_pop:
@@ -181,6 +217,19 @@ class FFIFilter(object):
 		else:
 			next_visitor = self.build_type_hierarchy
 		self.visit_trampoline(cursor, next_visitor, indent)
+		
+	def finish_hierarchy(self, indent = 0):
+		for (type_name, cx_type) in sorted(self.exposed_types.iteritems()):
+			if type_name not in self.known_types:
+				print (" " * indent), type_name, "is exposed but not previously registered, which means it's from a template"
+				type_decl = cx_type.get_declaration()
+				print (" " * indent), " defined at ", type_decl.kind, " with children", [c.kind for c in type_decl.get_children()]
+				# This seems like a bug in libclang, but a type declared as a template instantiation
+				# doesn't have a template ref/type ref sequence,
+				# so we have a couple options:
+				# - (a) try to parse the name and look it up as we would otherwise
+				# - (b) build up the list by trying to compile one typedef at a time.
+				print (" " * indent), "Inherits from", self.solve_template_base(cx_type, None, None, indent + 1)
 
 def main(prog_path, libclang_path, api_header, pch_dst, api_casts_dst, namespace_filter, *libclang_args):
 	# OKAY - so, some pseudo-code:
@@ -219,7 +268,7 @@ def main(prog_path, libclang_path, api_header, pch_dst, api_casts_dst, namespace
 		# Second pass: generate a table of the ones that exposed
 		#print sorted(filt.foreign_functions.keys())
 		filt.find_exposed()
-		print sorted(filt.exposed_types)
+		filt.finish_hierarchy()
 	with open(api_casts_dst, 'w') as out_handle:
 		from os.path import abspath
 		out_handle.write("""/**************************************
