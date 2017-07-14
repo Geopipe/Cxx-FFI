@@ -64,8 +64,9 @@ def solve_template_base_config(index, pch_dst):
 	def expect_missing_base_or_success(the_type,idx):
 		def f(diagnostics):
 			actual_spelling = [d.spelling for d in diagnostics]
-			permitted_spelling = ["no type named '%s' in '%s" % (refl_base(idx), the_type.spelling)]
-			print "testing expect for: ", the_type.spelling, idx, actual_spelling, "==", permitted_spelling
+			permitted_spelling = ["no type named '%s' in '%s'" % (refl_base(idx), the_type.spelling)]
+			print "testing expect for: ", the_type.spelling, idx, actual_spelling, "==", permitted_spelling,
+			print "(", (actual_spelling == permitted_spelling) ,")"
 			if actual_spelling == permitted_spelling:
 				return []
 			else: return expect_success(diagnostics)
@@ -103,13 +104,15 @@ def solve_template_base_config(index, pch_dst):
 			print (" "*indent),"Resolving %s from %s" % (the_type.spelling, the_template)
 			return extract_underlying_types_from_src(src_template, expect_success, indent)
 		else:
+			print (" "*indent),"Resolving %s online, because no template cursor was available" % (the_type.spelling,)
 			out = []
 			idx = 0
 			while True:
 				next_base = extract_underlying_types_from_src(
-					complete_ith_src(the_type, indent+2, idx),
+					complete_ith_src(the_type, idx, indent+2),
 					expect_missing_base_or_success(the_type, idx),
 					indent)
+				print (" " *(indent + 1)), " - extracted", next_base
 				if next_base:
 					out += next_base
 					idx += 1
@@ -229,7 +232,8 @@ class FFIFilter(object):
 				# so we have a couple options:
 				# - (a) try to parse the name and look it up as we would otherwise
 				# - (b) build up the list by trying to compile one typedef at a time.
-				print (" " * indent), "Inherits from", self.solve_template_base(cx_type, None, None, indent + 1)
+				type_bases = self.solve_template_base(cx_type, None, None, indent + 1)
+				print (" " * indent), "Inherits from", type_bases
 
 def main(prog_path, libclang_path, api_header, pch_dst, api_casts_dst, namespace_filter, *libclang_args):
 	# OKAY - so, some pseudo-code:
