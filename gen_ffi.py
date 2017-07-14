@@ -61,12 +61,12 @@ def solve_template_base_config(index, pch_dst):
 		if len(diagnostics): return CxxSyntaxError("\n".join(pprint.pformat(d) for d in diagnostics))
 		else: return True
 	
-	def expect_missing_base_or_success(the_type,idx):
+	def expect_missing_base_or_success(the_type,idx,indent):
 		def f(diagnostics):
 			actual_spelling = [d.spelling for d in diagnostics]
 			permitted_spelling = ["no type named '%s' in '%s'" % (refl_base(idx), the_type.spelling)]
-			print "testing expect for: ", the_type.spelling, idx, actual_spelling, "==", permitted_spelling,
-			print "(", (actual_spelling == permitted_spelling) ,")"
+			#print (" "*indent), "testing expect for: ", the_type.spelling, idx, actual_spelling, "==", permitted_spelling,
+			#print "(", (actual_spelling == permitted_spelling) ,")"
 			if actual_spelling == permitted_spelling:
 				return []
 			else: return expect_success(diagnostics)
@@ -99,6 +99,12 @@ def solve_template_base_config(index, pch_dst):
 			return expected_result
 	
 	def solve_template_base(the_type, the_template, known_base_typedefs, indent=0):
+		# This seems like a bug in libclang, but a type declared as a template instantiation
+		# doesn't have a template ref/type ref sequence,
+		# so we have a couple options:
+		# - (a) try to parse the name and look it up as we would otherwise
+		# - (b) build up the list by trying to compile one typedef at a time.
+		# Since (a) seems fairly brittle, we're going to stick with (b) for now.
 		if the_template:
 			src_template = "\n".join(complete_ith_src(the_type, idx, indent+2) for idx in range(len(known_base_typedefs[the_template])))
 			print (" "*indent),"Resolving %s from %s" % (the_type.spelling, the_template)
@@ -110,9 +116,7 @@ def solve_template_base_config(index, pch_dst):
 			while True:
 				next_base = extract_underlying_types_from_src(
 					complete_ith_src(the_type, idx, indent+2),
-					expect_missing_base_or_success(the_type, idx),
-					indent)
-				print (" " *(indent + 1)), " - extracted", next_base
+					expect_missing_base_or_success(the_type, idx, indent), indent)
 				if next_base:
 					out += next_base
 					idx += 1
@@ -180,6 +184,22 @@ class FFIFilter(object):
 			if need_pop:
 				ns_stack.pop()
 		ns_visitor(cursor, indent)
+		
+	# We assume that the types here are in canonical form
+	def recurse_to_base(self, the_type, inspect_cursor, indent = 0):
+		type_name = the_type.spelling
+		if type_name not in self.known_types:
+			print (" " * indent), type_name, "This type has not previously been registered, which means it's from a template"		
+			cursor_children = list(inspect_cursor.get_children())
+			if len(cursor_children):
+				the_template = cursor_children[0].spelling
+			else:
+				the_template = None
+			solved = self.solve_template_base(the_type, the_template, self.known_base_typedefs, indent+1)
+			self.known_types[type_name] = (the_type, solved)
+			print (" " * indent), " - found:", [t.spelling for t in solved]
+			for t in solved:
+				self.recurse_to_base(t, t.get_declaration(), indent + 1)
 	
 	def find_bases_config(self, derived_by):
 		derived_name = derived_by.spelling
@@ -193,10 +213,7 @@ class FFIFilter(object):
 				derived_type  = derived_by.type.get_canonical()
 				base_type = cursor.type.get_canonical()
 				self.known_types[derived_type.spelling][1].append(base_type)
-				if base_type.spelling not in self.known_types:
-					print (" " * indent), " This base is not previously registered, which means it's from a template"
-					self.known_types[base_type.spelling] = (base_type, self.solve_template_base(base_type, list(cursor.get_children())[0].spelling, self.known_base_typedefs,indent+1))
-					print (" " * indent), " - found:", [t.spelling for t in self.known_types[base_type.spelling][1]]
+				self.recurse_to_base(base_type, cursor, indent + 1)
 			elif (derived_by.kind == CursorKind.CLASS_TEMPLATE) and (cursor.kind == CursorKind.TYPEDEF_DECL):
 				print (" " * indent), "Has typedef:", cursor.displayname
 				if cursor.displayname[:9] == "REFL_BASE":
@@ -204,7 +221,7 @@ class FFIFilter(object):
 			else:
 				next_visitor = find_bases
 			self.visit_trampoline(cursor, next_visitor, indent)
-		return find_bases
+		return find_bases		
 		
 	def build_type_hierarchy(self, cursor, indent = 0):
 		if cursor.kind in (CursorKind.STRUCT_DECL, CursorKind.CLASS_DECL):
@@ -223,17 +240,7 @@ class FFIFilter(object):
 		
 	def finish_hierarchy(self, indent = 0):
 		for (type_name, cx_type) in sorted(self.exposed_types.iteritems()):
-			if type_name not in self.known_types:
-				print (" " * indent), type_name, "is exposed but not previously registered, which means it's from a template"
-				type_decl = cx_type.get_declaration()
-				print (" " * indent), " defined at ", type_decl.kind, " with children", [c.kind for c in type_decl.get_children()]
-				# This seems like a bug in libclang, but a type declared as a template instantiation
-				# doesn't have a template ref/type ref sequence,
-				# so we have a couple options:
-				# - (a) try to parse the name and look it up as we would otherwise
-				# - (b) build up the list by trying to compile one typedef at a time.
-				type_bases = self.solve_template_base(cx_type, None, None, indent + 1)
-				print (" " * indent), "Inherits from", type_bases
+			self.recurse_to_base(cx_type, cx_type.get_declaration())
 
 def main(prog_path, libclang_path, api_header, pch_dst, api_casts_dst, namespace_filter, *libclang_args):
 	# OKAY - so, some pseudo-code:
