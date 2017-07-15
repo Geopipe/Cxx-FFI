@@ -65,10 +65,7 @@ def solve_template_base_config(index, pch_dst):
 		def f(diagnostics):
 			actual_spelling = [d.spelling for d in diagnostics]
 			permitted_spelling = ["no type named '%s' in '%s'" % (refl_base(idx), the_type.spelling)]
-			#print (" "*indent), "testing expect for: ", the_type.spelling, idx, actual_spelling, "==", permitted_spelling,
-			#print "(", (actual_spelling == permitted_spelling) ,")"
-			if actual_spelling == permitted_spelling:
-				return []
+			if actual_spelling == permitted_spelling: return []
 			else: return expect_success(diagnostics)
 		return f
 	
@@ -77,14 +74,13 @@ def solve_template_base_config(index, pch_dst):
 		return "%stypedef typename %s::%s %s;" % (" "*indent, the_type.spelling, refl_base(idx), refl_ans(idx));
 	
 	def extract_underlying_types_from_src(src, diag_expect, indent):
-		print src
 		tu2 = index.parse("answers.hpp",
 						  args=["-std=c++11","-include-pch",pch_dst],
 						  unsaved_files=[("answers.hpp",src)],
 						  options = TranslationUnit.PARSE_INCOMPLETE | TranslationUnit.PARSE_SKIP_FUNCTION_BODIES)
 		expected_result = diag_expect(list(tu2.diagnostics))
-		if isinstance(expected_result, BaseException): #len(diagnostics) > 0:
-			raise expected_result #CxxSyntaxError("\n".join(pprint.pformat(d) for d in diagnostics))
+		if isinstance(expected_result, BaseException):
+			raise expected_result
 		elif expected_result:
 			def printA(c, i, r):
 				if c.kind == CursorKind.TYPEDEF_DECL:
@@ -209,7 +205,6 @@ class FFIFilter(object):
 				print (" " * indent), "Has base:", cursor.displayname
 				print (" " * indent), " defined by", cursor.type.get_canonical().spelling, " at ",
 				print cursor.type.get_canonical().get_declaration().kind
-				print (" " * indent), " with children", [c.kind for c in cursor.get_children()]
 				derived_type  = derived_by.type.get_canonical()
 				base_type = cursor.type.get_canonical()
 				self.known_types[derived_type.spelling][1].append(base_type)
@@ -226,7 +221,6 @@ class FFIFilter(object):
 	def build_type_hierarchy(self, cursor, indent = 0):
 		if cursor.kind in (CursorKind.STRUCT_DECL, CursorKind.CLASS_DECL):
 			print (" " * indent), cursor.displayname
-			print (" " * indent), " this decl has children", [c.kind for c in cursor.get_children()]
 			decl_type  = cursor.type.get_canonical()
 			self.known_types[decl_type.spelling] = (decl_type,[])		
 			next_visitor = self.find_bases_config(cursor)
