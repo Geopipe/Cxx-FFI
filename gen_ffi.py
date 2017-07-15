@@ -34,6 +34,26 @@ import pprint
 class CxxSyntaxError(SyntaxError):
 	pass
 
+def topo_sort(super_dag, root):
+	visited = {}
+	output = []
+	def visit(n):
+		visit_tag = visited.get(n, None)
+		if visit_tag == False:
+			raise ValueError("Cyclical Type Dependency")
+		elif visit_tag == None:
+			visited[n] = False
+			for child in super_dag[n][1]:
+				visit(child.spelling)
+			visited[n] = True
+			output.insert(0, n)
+		elif visit_tag:
+			pass
+	visit(root)
+	return output
+	
+
+
 def decompose_type(root_type, results):
 	root_type = root_type.get_canonical()
 	root_name = root_type.spelling
@@ -235,6 +255,13 @@ class FFIFilter(object):
 	def finish_hierarchy(self, indent = 0):
 		for (type_name, cx_type) in sorted(self.exposed_types.iteritems()):
 			self.recurse_to_base(cx_type, cx_type.get_declaration())
+			
+	def calc_exposed_bases(self, indent = 0):
+		for type_name in sorted(self.exposed_types.iterkeys()):
+			bases = topo_sort(self.known_types, type_name)
+			print type_name, bases
+		
+	
 
 def main(prog_path, libclang_path, api_header, pch_dst, api_casts_dst, namespace_filter, *libclang_args):
 	# OKAY - so, some pseudo-code:
@@ -274,6 +301,7 @@ def main(prog_path, libclang_path, api_header, pch_dst, api_casts_dst, namespace
 		#print sorted(filt.foreign_functions.keys())
 		filt.find_exposed()
 		filt.finish_hierarchy()
+		filt.calc_exposed_bases()
 	with open(api_casts_dst, 'w') as out_handle:
 		from os.path import abspath
 		out_handle.write("""/**************************************
