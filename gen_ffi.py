@@ -52,17 +52,10 @@ def topo_sort(super_dag, root):
 	visit(root)
 	return output
 
-def make_c_name(the_type):
-	#dummy implementation
-	return the_type.spelling 
-
-
 def emit_cast(derived, base, handle, indent=0):
-	handle.write("%s%s *upcast_%s_to_%s(%s *target){ return target; }\n" % (
+	handle.write("%stemplate %s *upcast(%s *);\n" % (
 		(" " * indent),
 		base.spelling,
-		make_c_name(derived),
-		make_c_name(base),
 		derived.spelling))
 
 def decompose_type(root_type, results):
@@ -331,7 +324,10 @@ def main(prog_path, libclang_path, api_header, pch_dst, api_casts_dst, namespace
 * overwritten by the next build process
 *
 **************************************/
-""" % (abspath(prog_path),))
+#include "%s"
+
+template<class From, class To> To* upcast(From *target){ return target; }
+""" % (abspath(prog_path), api_header))
 			
 			out_handle.write('extern "C" {\n')
 			for (exposed, bases) in sorted(exposed_bases.iteritems()):
