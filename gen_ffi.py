@@ -71,13 +71,13 @@ def decompose_type(root_type, results):
 		decompose_type(child,results)
 		
 
+def expect_success(diagnostics):
+	if len(diagnostics): return CxxSyntaxError("\n".join(pprint.pformat(d) for d in diagnostics))
+	else: return True
 		
 def solve_template_base_config(index, pch_dst):
 	def refl_base(idx):	return "REFL_BASE%d" % idx
 	def refl_ans(idx): return "REFL_ANS%d" % idx
-	def expect_success(diagnostics):
-		if len(diagnostics): return CxxSyntaxError("\n".join(pprint.pformat(d) for d in diagnostics))
-		else: return True
 	
 	def expect_missing_base_or_success(the_type,idx,indent):
 		def f(diagnostics):
@@ -355,5 +355,6 @@ def main(prog_path, libclang_path, api_header, pch_dst, api_casts_dst, namespace
 
 if __name__ == '__main__':
 	from sys import argv
+	print argv
 	main(*argv)
 	
