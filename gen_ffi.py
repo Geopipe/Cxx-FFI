@@ -324,12 +324,6 @@ class CodeGen(object):
 					 epilogue))
 
 def main(prog_path, libclang_path, api_header, pch_dst, api_casts_dst, namespace_filter, namespace_dst, *libclang_args):
-	# OKAY - so, some pseudo-code:
-	# Filter nodes to extern "C"
-	# - Iterate over all of the extern "C" functions that match some regex: i.e. make*
-	# - Get all of their argument types and return types.
-	# - Chase those to the declaration of the canonical version.
-	# - n.b. we should really generate this file by configuring it like a header to fill in the location of libclang and the includes for our target.
 	accept_from = set(namespace_filter.split(" "))
 	
 	Config.set_library_file(libclang_path)
