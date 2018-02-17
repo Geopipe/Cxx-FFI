@@ -29,10 +29,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 import clang.cindex
 from clang.cindex import CursorKind, Index, Config, TranslationUnit, TypeKind
 
-import pprint
+from cxx_util import diagnose_errors, list_diagnostics
 
-class CxxSyntaxError(SyntaxError):
-	pass
 
 def topo_sort(super_dag, root):
 	visited = {}
@@ -72,7 +70,8 @@ def decompose_type(root_type, results):
 		
 
 def expect_success(diagnostics):
-	if len(diagnostics): return CxxSyntaxError("\n".join(pprint.pformat(d) for d in diagnostics))
+	errors = diagnose_errors(diagnostics)
+	if errors: return errors
 	else: return True
 		
 def solve_template_base_config(index, pch_dst):
@@ -96,7 +95,7 @@ def solve_template_base_config(index, pch_dst):
 						  args=["-std=c++11","-include-pch",pch_dst],
 						  unsaved_files=[("answers.hpp",src)],
 						  options = TranslationUnit.PARSE_INCOMPLETE | TranslationUnit.PARSE_SKIP_FUNCTION_BODIES)
-		expected_result = diag_expect(list(tu2.diagnostics))
+		expected_result = diag_expect(list_diagnostics(tu2))
 		if isinstance(expected_result, BaseException):
 			raise expected_result
 		elif expected_result:
@@ -329,27 +328,18 @@ def main(prog_path, libclang_path, api_header, pch_dst, api_casts_dst, namespace
 	Config.set_library_file(libclang_path)
 	index = Index.create(excludeDecls=True)
 	# We should really want to use a compilation database here, except that it's only supported by makefiles...
-	tu = index.parse(api_header,
-					 args=libclang_args,
-					 options = TranslationUnit.PARSE_INCOMPLETE | TranslationUnit.PARSE_SKIP_FUNCTION_BODIES)
+	tu = TranslationUnit.from_ast_file(pch_dst, index)
+	filt = FFIFilter(lambda s: s[0] in accept_from,
+					 lambda x: x.displayname[:4] == "make" or x.displayname[:7] == "release",
+					 solve_template_base_config(index, pch_dst))
 	
-	diagnostics = list(tu.diagnostics)
-	if len(diagnostics) > 0:
-		raise CxxSyntaxError("\n".join(pprint.pformat(d) for d in diagnostics))
-	else:
-		tu.save(pch_dst) # We'll need this in a minute, and there's no way to just get it in RAM
-		
-		filt = FFIFilter(lambda s: s[0] in accept_from,
-						 lambda x: x.displayname[:4] == "make" or x.displayname[:7] == "release",
-						 solve_template_base_config(index, pch_dst))
-		
-		code_gen = CodeGen(prog_path,
-							pre_hook = lambda: ("namespace %s {" % (namespace_dst,), 4),
-							post_hook = lambda indent: "}")
-		
-		with open(api_casts_dst, 'w') as out_handle:
-			from os.path import abspath
-			out_handle.write(code_gen(api_header, filt.exposed_types, filt.emit_table_for_TU(tu.cursor)))
+	code_gen = CodeGen(prog_path,
+						pre_hook = lambda: ("namespace %s {" % (namespace_dst,), 4),
+						post_hook = lambda indent: "}")
+	
+	with open(api_casts_dst, 'w') as out_handle:
+		from os.path import abspath
+		out_handle.write(code_gen(api_header, filt.exposed_types, filt.emit_table_for_TU(tu.cursor)))
 
 		
 
