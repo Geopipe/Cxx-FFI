@@ -328,24 +328,14 @@ def main(prog_path, libclang_path, api_header, pch_dst, api_casts_dst, namespace
 	accept_from = set(namespace_filter.split(" "))
 	valid_function_prefixes = set(function_filter.split(" "))
 	
-	print repr(function_filter)
-	print repr(valid_function_prefixes)
-	
 	Config.set_library_file(libclang_path)
 	index = Index.create(excludeDecls=True)
 	# We should really want to use a compilation database here, except that it's only supported by makefiles...
 	tu = TranslationUnit.from_ast_file(pch_dst, index)
 
-	def prefixCheck(methodCursor):
-		methodName = methodCursor.displayname
-		print methodName
-		print [methodName.startswith(prefix) for prefix in valid_function_prefixes]
-		return any([methodName.startswith(prefix) for prefix in valid_function_prefixes])
-
 	filt = FFIFilter(lambda s: s[0] in accept_from,
-					prefixCheck,
-					 #lambda x: any([x.displayname.startswith(prefix) for prefix in valid_function_prefixes]),
-					 solve_template_base_config(index, pch_dst))
+		lambda x: any([x.displayname.startswith(prefix) for prefix in valid_function_prefixes]),
+		solve_template_base_config(index, pch_dst))
 	
 	code_gen = CodeGen(prog_path,
 						pre_hook = lambda: ("namespace %s {" % (namespace_dst,), 4),
