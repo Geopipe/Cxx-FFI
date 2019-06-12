@@ -164,6 +164,8 @@ class FFIFilter(object):
 			self.foreign_functions[cursor.displayname] = cursor.canonical
 			next_visitor = None
 		else:
+			if(cursor.kind == CursorKind.FUNCTION_DECL):
+				print("WARNING: " + cursor.displayname + " did not satisfy the function predicate in find_functions. Change the name of the function or the function predicate to fix this.")
 			next_visitor = self.find_functions
 		self.visit_trampoline(cursor, next_visitor, indent)
 			
@@ -322,16 +324,18 @@ class CodeGen(object):
 					 upcasts,
 					 epilogue))
 
-def main(prog_path, libclang_path, api_header, pch_dst, api_casts_dst, namespace_filter, namespace_dst, *libclang_args):
+def main(prog_path, libclang_path, api_header, pch_dst, api_casts_dst, namespace_filter, function_filter, namespace_dst, *libclang_args):
 	accept_from = set(namespace_filter.split(" "))
+	valid_function_prefixes = set(function_filter.split(" "))
 	
 	Config.set_library_file(libclang_path)
 	index = Index.create(excludeDecls=True)
 	# We should really want to use a compilation database here, except that it's only supported by makefiles...
 	tu = TranslationUnit.from_ast_file(pch_dst, index)
+
 	filt = FFIFilter(lambda s: s[0] in accept_from,
-					 lambda x: x.displayname[:4] == "make" or x.displayname[:7] == "release",
-					 solve_template_base_config(index, pch_dst))
+		lambda x: any([x.displayname.startswith(prefix) for prefix in valid_function_prefixes]),
+		solve_template_base_config(index, pch_dst))
 	
 	code_gen = CodeGen(prog_path,
 						pre_hook = lambda: ("namespace %s {" % (namespace_dst,), 4),
