@@ -294,10 +294,10 @@ class CodeGen(object):
 %s
 %s
 """
-	default_pre_hook = lambda: ("", 0)
+	default_pre_hook = lambda: ("#include <utility>", 0)
 	default_post_hook = lambda indent: ""
-	default_define_upcast_template = lambda indent: "%stemplate<class From, class To> To* upcast(From *target){ return target; }" % (" " * indent,)
-	default_emit_cast = lambda derived, base, indent: ("%stemplate %s *upcast(%s *);" % ((" " * indent), base.spelling, derived.spelling))
+	default_define_upcast_template = lambda indent: "%stemplate<class From, class To> shared_ptr<To>* upcast(shared_ptr<From> *target){ return new std::shared_ptr<To>(std::move(std::dynamic_pointer_cast<To>(*target))); }" % (" " * indent,)
+	default_emit_cast = lambda derived, base, indent: ("%stemplate std::shared_ptr<%s> *upcast(std::shared_ptr<%s> *);" % ((" " * indent), base.spelling, derived.spelling))
 	
 	def __init__(self, prog_path,
 				 pre_hook = default_pre_hook, template = default_template, post_hook = default_post_hook,
