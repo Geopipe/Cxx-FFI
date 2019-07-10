@@ -119,8 +119,9 @@ def solve_template_base_config(index, pch_dst):
 		# - (b) build up the list by trying to compile one typedef at a time.
 		# Since (a) seems fairly brittle, we're going to stick with (b) for now.
 		if the_template:
-			src_template = "\n".join(complete_ith_src(the_type, idx, indent+2) for idx in range(len(known_base_typedefs[the_template])))
 			print (" "*indent),"Resolving %s from %s" % (the_type.spelling, the_template)
+			print (" "*(indent + 2)),known_base_typedefs.keys()
+			src_template = "\n".join(complete_ith_src(the_type, idx, indent+2) for idx in range(len(known_base_typedefs[the_template])))
 			return extract_underlying_types_from_src(src_template, expect_success, indent)
 		else:
 			print (" "*indent),"Resolving %s online, because no template cursor was available" % (the_type.spelling,)
@@ -192,6 +193,8 @@ class FFIFilter(object):
 					print (" "*indent), "Accepting namespace cursor:", cursor.displayname
 					self.in_ns.append(cursor)
 					next_visitor = None
+				else:
+					print (" "*indent), "Skipping namespace cursor:", cursor.displayname
 				need_pop = True
 			else:
 				need_pop = False
@@ -207,7 +210,8 @@ class FFIFilter(object):
 			print (" " * indent), type_name, "This type has not previously been registered, which means it's from a template"		
 			cursor_children = list(inspect_cursor.get_children())
 			if len(cursor_children):
-				the_template = cursor_children[0].spelling
+				#print (" " * (indent + 2)), [(cchild.spelling, cchild.type.get_canonical().get_declaration().spelling) for cchild in cursor_children]
+				the_template = cursor_children[0].type.get_canonical().get_declaration().spelling
 			else:
 				the_template = None
 			solved = self.solve_template_base(the_type, the_template, self.known_base_typedefs, indent+1)
@@ -296,8 +300,14 @@ class CodeGen(object):
 """
 	default_pre_hook = lambda: ("#include <utility>", 0)
 	default_post_hook = lambda indent: ""
-	default_define_upcast_template = lambda indent: "%stemplate<class From, class To> shared_ptr<To>* upcast(shared_ptr<From> *target){ return new std::shared_ptr<To>(std::move(std::dynamic_pointer_cast<To>(*target))); }" % (" " * indent,)
-	default_emit_cast = lambda derived, base, indent: ("%stemplate std::shared_ptr<%s> *upcast(std::shared_ptr<%s> *);" % ((" " * indent), base.spelling, derived.spelling))
+	default_define_upcast_template = lambda indent: """%stemplate<class From, class To> struct Upcast {
+%s  static To* apply(From* target){ return target; }
+%s};
+
+%stemplate<class From, class To> struct Upcast<std::shared_ptr<From>, std::shared_ptr<To> > {
+%s  static std::shared_ptr<To>* apply(shared_ptr<From> *target){ return new std::shared_ptr<To>(std::move(std::dynamic_pointer_cast<To>(*target))); }
+%s};""" % ((" " * indent,) * 6)
+	default_emit_cast = lambda derived, base, indent: ("%stemplate struct Upcast<%s, %s >;" % ((" " * indent), derived.spelling, base.spelling))
 	
 	def __init__(self, prog_path,
 				 pre_hook = default_pre_hook, template = default_template, post_hook = default_post_hook,
