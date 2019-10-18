@@ -46,33 +46,6 @@ namespace CxxFFI {
 	namespace detail {
 		using namespace boost::mpl;
 		
-		template<typename T> struct is_vector {
-			constexpr static const bool value = true;//false;
-		};
-		
-		template<typename T> struct is_set {
-			constexpr static const bool value = true;//false;
-		};
-		/*
-		template<typename ...Ts> struct is_vector<vector<Ts...>> {
-			constexpr static const bool value = true;
-		};
-
-		template<typename ...Ts> struct is_set<set<Ts...>> {
-			constexpr static const bool value = true;
-		};
-		
-		template<typename ...Ts> struct is_set<s_item<Ts...>> {
-			constexpr static const bool value = true;
-		};
-		*/
-		template<template <typename> typename Pred, typename T> struct meta_type_check {
-			//static_assert(Pred<T>::value, "meta-type check failed");
-			using type = T;
-		};
-		
-		template<template <typename> typename Pred, typename T> using MTC = typename meta_type_check<Pred,T>::type;
-		
 		template<typename Left, typename Right> struct Concatenate {
 			using type = typename copy< Right, back_inserter<Left> >::type;
 		};
@@ -83,16 +56,16 @@ namespace CxxFFI {
 		struct VisitLoopInner {
 			template<typename OldState, typename Child> class apply {
 				using Here = typename at<OldState, int_<0>>::type;
-				using OldWIP = MTC<is_set, typename at<OldState, int_<1>>::type>;
-				using OldDone = MTC<is_set, typename at<OldState, int_<2>>::type>;
-				using MaybeTail = MTC<is_vector, typename at<OldState, int_<3>>::type>;
+				using OldWIP = typename at<OldState, int_<1>>::type;
+				using OldDone = typename at<OldState, int_<2>>::type;
+				using MaybeTail = typename at<OldState, int_<3>>::type;
 				
 				using VisitBasesThunk = VisitBases<Child, OldWIP, OldDone>;
-				using FinalWIP = MTC<is_set, typename VisitBasesThunk::FinalWIP>;
-				using FinalDone = MTC<is_set, typename VisitBasesThunk::FinalDone>;
-				using MaybeFront = MTC<is_vector, typename VisitBasesThunk::type>;
+				using FinalWIP = typename VisitBasesThunk::FinalWIP;
+				using FinalDone = typename VisitBasesThunk::FinalDone;
+				using MaybeFront = typename VisitBasesThunk::type;
 				
-				using JoinedList = MTC<is_vector, typename Concatenate<MaybeFront, MaybeTail>::type>;
+				using JoinedList = typename Concatenate<MaybeFront, MaybeTail>::type;
 			public:
 				using type = vector<Here, FinalWIP, FinalDone, JoinedList> ;
 				
@@ -100,19 +73,19 @@ namespace CxxFFI {
 		};
 		
 		template<typename Here, typename WIP, typename Done> class VisitLoop {
-			using InitWIP = MTC<is_set, WIP>;
-			using NextWIP = MTC<is_set, typename insert<InitWIP, Here>::type>;
-			using ReflBases = MTC<is_vector, typename ReflBases<Here>::type>;
-			using InitState = MTC<is_vector, vector<Here, NextWIP, Done, vector<>>>;
+			using InitWIP = WIP;
+			using NextWIP = typename insert<InitWIP, Here>::type;
+			using ReflBases = typename ReflBases<Here>::type;
+			using InitState = vector<Here, NextWIP, Done, vector<>>;
 			
-			using AccumulatedState = MTC<is_vector, typename accumulate<ReflBases, InitState, VisitLoopInner>::type>;
-			using AccumulatedWIP = MTC<is_set, typename at<AccumulatedState, int_<1>>::type>;
-			using AccumulatedDone = MTC<is_set, typename at<AccumulatedState, int_<2>>::type>;
-			using AccumulatedTail = MTC<is_vector, typename at<AccumulatedState, int_<3>>::type>;
+			using AccumulatedState = typename accumulate<ReflBases, InitState, VisitLoopInner>::type;
+			using AccumulatedWIP = typename at<AccumulatedState, int_<1>>::type;
+			using AccumulatedDone = typename at<AccumulatedState, int_<2>>::type;
+			using AccumulatedTail = typename at<AccumulatedState, int_<3>>::type;
 		public:
-			using FinalWIP = MTC<is_set, typename erase_key<AccumulatedWIP, typename key_type<AccumulatedWIP, Here>::type>::type>;
-			using FinalDone = MTC<is_set, typename insert<AccumulatedDone, Here>::type>;
-			using type = MTC<is_vector, typename push_front<AccumulatedTail, Here>::type>;
+			using FinalWIP = typename erase_key<AccumulatedWIP, typename key_type<AccumulatedWIP, Here>::type>::type;
+			using FinalDone = typename insert<AccumulatedDone, Here>::type;
+			using type = typename push_front<AccumulatedTail, Here>::type;
 		};
 		
 		template<typename Here, typename WIP, typename Done>
@@ -120,33 +93,33 @@ namespace CxxFFI {
 			static_assert(!contains<WIP, Here>::value, "Cycle while toposorting base classes. Your inheritance is broken");
 			template<bool done> class JointIf {
 			public:
-				using FinalWIP = MTC<is_set, WIP>;
-				using FinalDone = MTC<is_set, Done>;
-				using type = MTC<is_vector, vector<>>;
+				using FinalWIP = WIP;
+				using FinalDone = Done;
+				using type = vector<>;
 			};
 			
 			template<> class JointIf<false> {
 				using VisitLoopThunk = VisitLoop<Here, WIP, Done>;
 			public:
-				using FinalWIP = MTC<is_set, typename VisitLoopThunk::FinalWIP>;
-				using FinalDone = MTC<is_set, typename VisitLoopThunk::FinalDone>;
-				using type = MTC<is_vector, typename VisitLoopThunk::type>;
+				using FinalWIP = typename VisitLoopThunk::FinalWIP;
+				using FinalDone = typename VisitLoopThunk::FinalDone;
+				using type = typename VisitLoopThunk::type;
 			};
 			
 			using DoneHere = typename contains<Done, Here>::type;
 			using IfThunk = JointIf<DoneHere::value>;
 		public:
-			using FinalWIP = MTC<is_set, typename IfThunk::FinalWIP>;
-			using FinalDone = MTC<is_set, typename IfThunk::FinalDone>;
-			using type = MTC<is_vector, typename IfThunk::type>;
+			using FinalWIP = typename IfThunk::FinalWIP;
+			using FinalDone = typename IfThunk::FinalDone;
+			using type = typename IfThunk::type;
 		};
 		
 	}
 	
 	template<typename T> struct ToposortBases {
-		using WIP = detail::MTC<detail::is_set, boost::mpl::set<>>;
-		using Done= detail::MTC<detail::is_set, boost::mpl::set<>>;
-		using type = detail::MTC<detail::is_vector, typename detail::VisitBases<T, WIP, Done>::type>;
+		using WIP = boost::mpl::set<>;
+		using Done= boost::mpl::set<>;
+		using type =typename detail::VisitBases<T, WIP, Done>::type;
 	};
 	
 	template<typename T> auto operator<<(std::ostream& os, const T& t) -> decltype(t(os), os)
