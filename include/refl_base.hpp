@@ -135,24 +135,31 @@ namespace CxxFFI {
 			return (sizeof...(R) == 0) ? "" : ", ";
 		}
 		
+		template<typename Start, typename End> std::string itMaybeComma() {
+			return std::is_same<Start, End>::value ? "" : ", ";
+		}
+		
 		template<typename T> std::string readableName() {
 			return boost::core::demangle(typeid(T).name());
 		}
 		
-		template<typename T, typename Vec> struct CastsTableSubEntries {
-			std::ostream& operator()(std::ostream& o) const { return o; }
-		};
-		template<typename T, typename H, typename ...R>
-		struct CastsTableSubEntries<T, vector<H, R...> > {
+		template<typename T, typename Start, typename End> struct CastsTableSubEntries {
+			using Here = typename deref<Start>::type;
+			using Next = typename next<Start>::type;
 			std::ostream& operator()(std::ostream& o) const {
-				return o << readableName<H>() << maybeComma<R...>() << CastsTableSubEntries<T, vector<R...>>();
+				return o << readableName<Here>() << itMaybeComma<Next, End>() << CastsTableSubEntries<T, Next, End>();
+			}
+		};
+		template<typename T, typename End> struct CastsTableSubEntries<T, End, End> {
+			std::ostream& operator()(std::ostream& o) const {
+				return o;
 			}
 		};
 		
 		template<typename T> struct CastsTableEntry {
 			using TopoSorted = typename pop_front<typename ToposortBases<T>::type>::type;
 			std::ostream& operator()(std::ostream& o) const {
-				return o << "[" << readableName<T>() << ", [" << CastsTableSubEntries<T, TopoSorted>() << "]]" ;
+				return o << "[" << readableName<T>() << ", [" << CastsTableSubEntries<T, typename begin<TopoSorted>::type, typename end<TopoSorted>::type>() << "]]" ;
 			}
 		};
 		
