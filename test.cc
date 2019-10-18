@@ -18,5 +18,5 @@ struct D : B, C {
 };
 
 int main(int argc, const char *argv[]) {
-	std::cout << CxxFFI::CastsTable<A, B, C, D>::apply() << std::endl;
+	std::cout << CxxFFI::CastsTable<A, B, C, D, std::shared_ptr<D>>::apply() << std::endl;
 };
