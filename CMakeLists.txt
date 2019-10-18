@@ -12,3 +12,4 @@ include_directories(${Boost_INCLUDE_DIRS})
 include_directories(${CMAKE_SOURCE_DIR}/include)
 
 add_executable(test test.cc include/refl_base.hpp)
+target_compile_options(test PRIVATE -ftemplate-backtrace-limit=0)
