@@ -4,6 +4,8 @@
 #include <boost/core/demangle.hpp>
 #include <boost/dll/library_info.hpp>
 
+#include <iostream>
+
 int main(int argc, const char *argv[]) {
 	std::cout << CxxFFI::CastsTable<A, B, C, D, std::shared_ptr<D>>::apply() << std::endl;
 	
