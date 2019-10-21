@@ -13,6 +13,6 @@ namespace CxxFFI {
 	template A* upcast<C, A>(C*);
 }
 
-boost::dll::fs::path testLoc() {
+boost::filesystem::path testLoc() {
 	return boost::dll::this_line_location();
 }

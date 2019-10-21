@@ -19,4 +19,4 @@ struct D : B, C {
 	using ReflBases = CxxFFI::DefineBases<B, C>;
 };
 
-boost::dll::fs::path testLoc();
+boost::filesystem::path testLoc();
