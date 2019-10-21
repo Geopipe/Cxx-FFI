@@ -23,6 +23,7 @@
 #include <boost/mpl/transform.hpp>
 #include <boost/mpl/vector.hpp>
 
+#include <map>
 #include <memory>
 #include <sstream>
 #include <type_traits>
@@ -42,6 +43,28 @@ namespace CxxFFI {
 	template<typename T> struct ReflBases<std::shared_ptr<T>> {
 		using type = typename CoVariantBases<std::shared_ptr, T>::type;
 	};
+	
+	namespace detail {
+		template<typename Derived, typename Base> struct Upcaster {
+			static Base* apply(Derived* derived){
+				return derived;
+			}
+		};
+		
+		template<typename Derived, typename Base>
+		struct Upcaster<std::shared_ptr<Derived>, std::shared_ptr<Base>> {
+			static std::shared_ptr<Base>* apply(std::shared_ptr<Derived>* derived) {
+				// We should really add an extra branch in here to check if we can use a static_pointer_cast instead
+				// but this is simpler for now, and deals with multiple inheritance
+				return new std::shared_ptr<Base>(std::dynamic_pointer_cast<Base>(derived));
+			}
+		};
+	}
+	
+	template<typename Derived, typename Base> Base* upcast(Derived* derived){
+		return detail::Upcaster<Derived, Base>::apply(derived);
+	}
+	
 	
 	namespace detail {
 		using namespace boost::mpl;
@@ -177,19 +200,31 @@ namespace CxxFFI {
 	}
 	
 	template<typename ...T> class CastsTable {
+		static std::map<std::string, std::string> genKnownCasts() {
+			
+		}
+		
+		static const std::map<std::string, std::string>& knownCasts() {
+			static std::map<std::string, std::string> ans = genKnownCasts();
+			return ans;
+		}
+		
 		static std::string genCastsTable() {
 			std::ostringstream o;
 			o << "[" << detail::CastsTableEntries<T...>() << "]";
 			return o.str();
 		}
 		
-		static const std::string castsTable;
+		static const std::string& castsTable() {
+			static std::string ans = genCastsTable();
+			return ans;
+			
+		};
+		
 	public:
 		static const char * apply() {
-			return castsTable.c_str();
+			return castsTable().c_str();
 		}
 	};
-	
-	template<typename ...T> const std::string CastsTable<T...>::castsTable = CastsTable<T...>::genCastsTable();
 }
 

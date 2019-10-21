@@ -5,11 +5,13 @@ template<class Base, class Derived> Base* upcast(Derived* d){
 }
 
 
-template A* upcast<A, D>(D*);
-template B* upcast<B, D>(D*);
-template C* upcast<C, D>(D*);
-template A* upcast<A, B>(B*);
-template A* upcast<A, C>(C*);
+namespace CxxFFI {
+	template A* upcast<D, A>(D*);
+	template B* upcast<D, B>(D*);
+	template C* upcast<D, C>(D*);
+	template A* upcast<B, A>(B*);
+	template A* upcast<C, A>(C*);
+}
 
 boost::dll::fs::path testLoc() {
 	return boost::dll::this_line_location();

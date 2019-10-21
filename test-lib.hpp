@@ -19,6 +19,4 @@ struct D : B, C {
 	using ReflBases = CxxFFI::DefineBases<B, C>;
 };
 
-template<class Base, class Derived> Base* upcast(Derived* d);
-
 boost::dll::fs::path testLoc();
