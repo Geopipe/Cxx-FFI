@@ -13,8 +13,15 @@ int main(int argc, const char *argv[]) {
 	auto inf = boost::dll::library_info(here);
 	
 	std::vector<std::string> exports = inf.symbols("__text");
-	if(!exports.size()) {
+	if(exports.size()) {
+		std::cout << "Found symbols in __text: probably a Mach-O environment" << std::endl;
+	} else {
 		exports = inf.symbols(".text");
+		if(exports.size()) {
+			std::cout << "Found symbols in .text: probably an ELF environment" << std::endl;
+		} else {
+			std::cerr << "No symbols found. Might need help on this platform" << std::endl;
+		}
 	}
 	for(size_t i = 0; i < exports.size(); i++){
 		std::cout << exports[i] << " -> " << boost::core::demangle(exports[i].c_str()) << std::endl;
