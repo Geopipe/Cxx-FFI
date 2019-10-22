@@ -172,13 +172,16 @@ namespace CxxFFI {
 			return boost::core::demangle(typeid(T).name());
 		}
 		
-		template<typename Start, typename End> struct CastsTableSubEntries {
+		template<typename Derived, typename Start, typename End> struct CastsTableSubEntries {
 			using Here = typename deref<Start>::type;
 			using Next = typename next<Start>::type;
+			using CastFunc = Here*(*)(Derived*);
 			
 			std::string &derivedName;
 			std::map<std::string, std::string> &knownCasts;
 			std::ostream& operator()(std::ostream& o) const {
+				constexpr const CastFunc instantiateMe = &upcast<Derived, Here>;
+				static_assert(instantiateMe != nullptr, "The compiler is optimizing badly");
 				std::string baseName = readableName<Here>();
 				std::string castSymbol = knownCasts[baseName];
 				if (castSymbol.length()) {
@@ -186,10 +189,10 @@ namespace CxxFFI {
 				} else {
 					std::cerr << "Warning: couldn't find upcast from " << derivedName << " to " << baseName << std::endl;
 				}
-				return o << CastsTableSubEntries<Next, End>{derivedName, knownCasts};
+				return o << CastsTableSubEntries<Derived, Next, End>{derivedName, knownCasts};
 			}
 		};
-		template<typename End> struct CastsTableSubEntries<End, End> {
+		template<typename Derived, typename End> struct CastsTableSubEntries<Derived, End, End> {
 			std::string &derivedName;
 			std::map<std::string, std::string> &knownCasts;
 			std::ostream& operator()(std::ostream& o) const {
@@ -205,7 +208,7 @@ namespace CxxFFI {
 			std::map<std::string, std::map<std::string, std::string> > &knownCasts;
 			std::ostream& operator()(std::ostream& o) const {
 				std::string derivedName = readableName<Derived>();
-				return o << "[" << std::quoted(derivedName) << ", [" << CastsTableSubEntries<Begin, End>{derivedName, knownCasts[derivedName]} << "]]" ;
+				return o << "[" << std::quoted(derivedName) << ", [" << CastsTableSubEntries<Derived, Begin, End>{derivedName, knownCasts[derivedName]} << "]]" ;
 			}
 		};
 		
