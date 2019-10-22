@@ -20,6 +20,7 @@
 #include <boost/mpl/back_inserter.hpp>
 #include <boost/mpl/contains.hpp>
 #include <boost/mpl/copy.hpp>
+#include <boost/mpl/copy_if.hpp>
 #include <boost/mpl/erase_key.hpp>
 #include <boost/mpl/key_type.hpp>
 #include <boost/mpl/pop_front.hpp>
@@ -275,12 +276,10 @@ namespace CxxFFI {
 			}
 			return exports;
 		}
-		
 	}
 	
-	template<boost::filesystem::path(*libraryLocation)(), typename ...T> class CastsTable {
-		using SeedTypes = boost::mpl::vector<T...>;
-		using Hierarchy = typename boost::mpl::transform<SeedTypes, ToposortBases>::type;
+	template<boost::filesystem::path(*libraryLocation)(), typename SeedTypes> class CastsTable {
+		using Hierarchy = typename boost::mpl::transform<SeedTypes, ToposortBases, boost::mpl::back_inserter<boost::mpl::vector0<>>>::type;
 		using KnownTypes = typename boost::mpl::fold<typename boost::mpl::transform<Hierarchy,detail::Vec2Set>::type, boost::mpl::set0<>, detail::SetUnion>::type;
 		using MatchKnownTypes = detail::MatchKnownTypes<KnownTypes>;
 		
@@ -345,6 +344,65 @@ namespace CxxFFI {
 		static const char * knownTypes() {
 			return matchKnownTypes().c_str();
 		}
+	};
+	
+	namespace detail {
+		class BareType {
+			template<typename T, bool = std::is_const<T>::value || std::is_volatile<T>::value || std::is_reference<T>::value || std::is_pointer<T>::value || std::is_array<T>::value> struct BranchBare {
+				using type = typename BranchBare<typename std::remove_all_extents<typename std::remove_pointer<typename std::remove_reference<typename std::remove_cv<T>::type>::type>::type>::type>::type;
+			};
+			
+			template<typename T> struct BranchBare<T, false> {
+				using type = T;
+			};
+		public:
+			template<typename T> struct apply{
+				using type = typename BranchBare<T>::type;
+			};
+		};
+	}
+	
+	template<typename T> struct APIFilter; // Forward declaration to allow use in following MPL meta-func
+	
+	namespace detail {
+		struct APIFilterApplier {
+			template<typename T> struct apply {
+				using type = typename APIFilter<T>::type;
+			};
+		};
+	};
+	
+	// Should only be used on bare types, so DiscoverAPITypes needs to enforce that, via ExtractFuncTypes.
+	template<typename T> struct APIFilter {
+		using Bases = typename CxxFFI::ReflBases<T>::type;
+		using BasesPass = typename boost::mpl::transform<Bases,detail::APIFilterApplier>::type;
+		using type = typename boost::mpl::fold<BasesPass, boost::mpl::bool_<false>, boost::mpl::or_<boost::mpl::_1, boost::mpl::_2>>::type;
+	};
+	
+	template<typename T> struct APIFilter<std::shared_ptr<T>> {
+		using type = typename APIFilter<T>::type;
+	};
+	
+	struct ExtractFuncTypes {
+		template<typename T> class apply {
+			static_assert(std::is_function<T>::value, "Can't use ExtractFuncTypes on non-function-type");
+		};
+		
+		template<typename R, typename ...Args> class apply<R(Args...)> {
+			using RawTypes = boost::mpl::vector<R, Args...>;;
+		public:
+			using type = typename boost::mpl::transform<RawTypes, detail::BareType>::type;
+		};
+	};
+	
+	struct DiscoverAPITypes {
+		template<typename Funcs> struct apply {
+			using FuncTypes = typename boost::mpl::transform<Funcs, ExtractFuncTypes>::type;
+			using UniqueFuncTypes = typename boost::mpl::transform<FuncTypes, detail::Vec2Set>::type;
+			using SeedTypes = typename boost::mpl::fold<UniqueFuncTypes, boost::mpl::set0<>, detail::SetUnion>::type;
+		public:
+			using type = typename boost::mpl::copy_if<SeedTypes, detail::APIFilterApplier, boost::mpl::inserter<boost::mpl::set0<>, boost::mpl::insert<boost::mpl::_1, boost::mpl::_2>>>::type;
+		};
 	};
 }
 

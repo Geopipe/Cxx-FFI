@@ -19,4 +19,11 @@ struct D : B, C {
 	using ReflBases = CxxFFI::DefineBases<B, C>;
 };
 
-boost::filesystem::path testLoc();
+
+namespace CxxFFI {
+	template<> struct APIFilter<A> {
+		using type = boost::mpl::bool_<true>;
+	};
+}
+
+const char * castsTable();
