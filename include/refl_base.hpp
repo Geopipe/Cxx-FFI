@@ -381,8 +381,10 @@ namespace CxxFFI {
 	
 	// Should only be used on bare types, so DiscoverAPITypes needs to enforce that, via ExtractFuncTypes.
 	template<typename T> struct APIFilter {
+	private:
 		using Bases = typename CxxFFI::ReflBases<T>::type;
 		using BasesPass = typename boost::mpl::transform<Bases,detail::APIFilterApplier>::type;
+	public:
 		using type = typename boost::mpl::fold<BasesPass, boost::mpl::bool_<false>, boost::mpl::or_<boost::mpl::_1, boost::mpl::_2>>::type;
 	};
 	
@@ -403,7 +405,7 @@ namespace CxxFFI {
 	};
 	
 	struct DiscoverAPITypes {
-		template<typename Funcs> struct apply {
+		template<typename Funcs> class apply {
 			using FuncTypes = typename boost::mpl::transform<Funcs, ExtractFuncTypes>::type;
 			using UniqueFuncTypes = typename boost::mpl::transform<FuncTypes, detail::Vec2Set>::type;
 			using SeedTypes = typename boost::mpl::fold<UniqueFuncTypes, boost::mpl::set0<>, detail::SetUnion>::type;

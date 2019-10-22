@@ -31,16 +31,9 @@ std::shared_ptr<C> sharedCFromSharedDStar(std::shared_ptr<D> *d) {
 }
 
 using APIFuncs = boost::mpl::vector<decltype(aRefFromDRef),decltype(sharedBFromSharedDAnd),decltype(sharedCFromSharedDStar)>;
-using APITypesThunk = typename CxxFFI::DiscoverAPITypes::apply<APIFuncs>;//::type;
-using APITypes = APITypesThunk::type;
+using APITypes = typename CxxFFI::DiscoverAPITypes::apply<APIFuncs>::type;
 using CastsTable = CxxFFI::CastsTable<testLoc, APITypes>;
 
 const char * castsTable() {
-	using CxxFFI::detail::readableName;
-	std::cout << readableName<APIFuncs>() << std::endl << std::endl;
-	std::cout << readableName<APITypesThunk::FuncTypes>() << std::endl << std::endl;
-	std::cout << readableName<APITypesThunk::UniqueFuncTypes>() << std::endl << std::endl;
-	std::cout << readableName<APITypesThunk::SeedTypes>() << std::endl << std::endl;
-	std::cout << readableName<APITypes>() << std::endl << std::endl;
 	return CastsTable::apply();
 }
