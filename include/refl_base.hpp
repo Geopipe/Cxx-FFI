@@ -276,11 +276,18 @@ namespace CxxFFI {
 			}
 			return exports;
 		}
+		
+		template<typename SeedTypes> struct FilterUnused {
+			template<typename Sorted> struct apply {
+				using type = typename copy_if<Sorted, contains<SeedTypes, _1> >::type;
+			};
+		};
 	}
 	
 	template<boost::filesystem::path(*libraryLocation)(), typename SeedTypes> class CastsTable {
-		using Hierarchy = typename boost::mpl::transform<SeedTypes, ToposortBases, boost::mpl::back_inserter<boost::mpl::vector0<>>>::type;
-		using KnownTypes = typename boost::mpl::fold<typename boost::mpl::transform<Hierarchy,detail::Vec2Set>::type, boost::mpl::set0<>, detail::SetUnion>::type;
+		using Hierarchy = typename boost::mpl::transform<SeedTypes, ToposortBases, boost::mpl::back_inserter<boost::mpl::vector0<>>>::type; // SeedTypes may be associative
+		using HierarchyFiltered = typename boost::mpl::transform<Hierarchy, detail::FilterUnused<SeedTypes>>::type;
+		using KnownTypes = typename boost::mpl::fold<typename boost::mpl::transform<HierarchyFiltered,detail::Vec2Set>::type, boost::mpl::set0<>, detail::SetUnion>::type;
 		using MatchKnownTypes = detail::MatchKnownTypes<KnownTypes>;
 		
 		static std::string& matchKnownTypes() {
