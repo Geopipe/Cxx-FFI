@@ -23,6 +23,8 @@
 #include <boost/mpl/transform.hpp>
 #include <boost/mpl/vector.hpp>
 
+#include <re2/re2.h>
+
 #include <map>
 #include <memory>
 #include <sstream>
@@ -139,10 +141,13 @@ namespace CxxFFI {
 		
 	}
 	
-	template<typename T> struct ToposortBases {
-		using WIP = boost::mpl::set<>;
-		using Done= boost::mpl::set<>;
-		using type =typename detail::VisitBases<T, WIP, Done>::type;
+	 struct ToposortBases {
+		 template<typename T> class apply {
+			 using WIP = boost::mpl::set<>;
+			 using Done= boost::mpl::set<>;
+		 public:
+			 using type =typename detail::VisitBases<T, WIP, Done>::type;
+		 };
 	};
 	
 	template<typename T> auto operator<<(std::ostream& os, const T& t) -> decltype(t(os), os)
@@ -154,11 +159,7 @@ namespace CxxFFI {
 	namespace detail {
 		using namespace boost::mpl;
 		
-		template<typename ...R> std::string maybeComma() {
-			return (sizeof...(R) == 0) ? "" : ", ";
-		}
-		
-		template<typename Start, typename End> std::string itMaybeComma() {
+		template<typename Start, typename End> std::string maybeComma() {
 			return std::is_same<Start, End>::value ? "" : ", ";
 		}
 		
@@ -166,40 +167,48 @@ namespace CxxFFI {
 			return boost::core::demangle(typeid(T).name());
 		}
 		
-		template<typename T, typename Start, typename End> struct CastsTableSubEntries {
+		template<typename Start, typename End> struct CastsTableSubEntries {
 			using Here = typename deref<Start>::type;
 			using Next = typename next<Start>::type;
 			std::ostream& operator()(std::ostream& o) const {
-				return o << readableName<Here>() << itMaybeComma<Next, End>() << CastsTableSubEntries<T, Next, End>();
+				return o << readableName<Here>() << maybeComma<Next, End>() << CastsTableSubEntries<Next, End>();
 			}
 		};
-		template<typename T, typename End> struct CastsTableSubEntries<T, End, End> {
+		template<typename End> struct CastsTableSubEntries<End, End> {
 			std::ostream& operator()(std::ostream& o) const {
 				return o;
 			}
 		};
 		
 		template<typename T> struct CastsTableEntry {
-			using TopoSorted = typename pop_front<typename ToposortBases<T>::type>::type;
+			using TopoSorted = typename pop_front<typename ToposortBases::apply<T>::type>::type;
+			using Begin = typename begin<TopoSorted>::type;
+			using End = typename end<TopoSorted>::type;
 			std::ostream& operator()(std::ostream& o) const {
-				return o << "[" << readableName<T>() << ", [" << CastsTableSubEntries<T, typename begin<TopoSorted>::type, typename end<TopoSorted>::type>() << "]]" ;
+				return o << "[" << readableName<T>() << ", [" << CastsTableSubEntries<Begin, End>() << "]]" ;
 			}
 		};
 		
-		template<typename ...T> struct CastsTableEntries {
+		template<typename Start, typename End> struct CastsTableEntries {
+			using Here = typename deref<Start>::type;
+			using Next = typename next<Start>::type;
+			std::ostream& operator()(std::ostream& o) const {
+				return o << CastsTableEntry<Here>() << maybeComma<Next, End>() << CastsTableEntries<Next, End>();
+			}
+		};
+		
+		template<typename End> struct CastsTableEntries<End, End> {
 			std::ostream& operator()(std::ostream& o) const {
 				return o;
-			}
-		};
-		
-		template<typename H, typename ...R> struct CastsTableEntries<H, R...> {
-			std::ostream& operator()(std::ostream& o) const {
-				return o << CastsTableEntry<H>() << maybeComma<R...>() << CastsTableEntries<R...>();
 			}
 		};
 	}
 	
 	template<typename ...T> class CastsTable {
+		using StartTypes = boost::mpl::vector<T...>;
+		using Hierarchy = boost::mpl::transform<typename boost::mpl::begin<StartTypes>::type,
+												typename boost::mpl::end<StartTypes>::type,
+												ToposortBases>;
 		static std::map<std::string, std::string> genKnownCasts() {
 			
 		}
@@ -211,7 +220,8 @@ namespace CxxFFI {
 		
 		static std::string genCastsTable() {
 			std::ostringstream o;
-			o << "[" << detail::CastsTableEntries<T...>() << "]";
+			o << "[" << detail::CastsTableEntries<typename boost::mpl::begin<StartTypes>::type,
+			typename boost::mpl::end<StartTypes>::type>() << "]";
 			return o.str();
 		}
 		
