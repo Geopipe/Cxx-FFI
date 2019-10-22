@@ -9,7 +9,11 @@
 
 #pragma once
 
+#include <iomanip>
+#include <iostream>
 #include <boost/core/demangle.hpp>
+
+#include <boost/dll/library_info.hpp>
 
 #include <boost/mpl/accumulate.hpp>
 #include <boost/mpl/at.hpp>
@@ -58,7 +62,7 @@ namespace CxxFFI {
 			static std::shared_ptr<Base>* apply(std::shared_ptr<Derived>* derived) {
 				// We should really add an extra branch in here to check if we can use a static_pointer_cast instead
 				// but this is simpler for now, and deals with multiple inheritance
-				return new std::shared_ptr<Base>(std::dynamic_pointer_cast<Base>(derived));
+				return new std::shared_ptr<Base>(std::dynamic_pointer_cast<Base>(*derived));
 			}
 		};
 	}
@@ -159,8 +163,8 @@ namespace CxxFFI {
 	namespace detail {
 		using namespace boost::mpl;
 		
-		template<typename Start, typename End> std::string maybeComma() {
-			return std::is_same<Start, End>::value ? "" : ", ";
+		template<typename Start, typename End> std::string maybeSeparator(std::string sep = ", ") {
+			return std::is_same<Start, End>::value ? "" : sep;
 		}
 		
 		template<typename T> std::string readableName() {
@@ -170,58 +174,160 @@ namespace CxxFFI {
 		template<typename Start, typename End> struct CastsTableSubEntries {
 			using Here = typename deref<Start>::type;
 			using Next = typename next<Start>::type;
+			
+			std::string &derivedName;
+			std::map<std::string, std::string> &knownCasts;
 			std::ostream& operator()(std::ostream& o) const {
-				return o << readableName<Here>() << maybeComma<Next, End>() << CastsTableSubEntries<Next, End>();
+				std::string baseName = readableName<Here>();
+				std::string castSymbol = knownCasts[baseName];
+				if (castSymbol.length()) {
+					o << "[" << std::quoted(baseName) << ", " << std::quoted(castSymbol) << "]" << maybeSeparator<Next, End>();
+				} else {
+					std::cerr << "Warning: couldn't find upcast from " << derivedName << " to " << baseName << std::endl;
+				}
+				return o << CastsTableSubEntries<Next, End>{derivedName, knownCasts};
 			}
 		};
 		template<typename End> struct CastsTableSubEntries<End, End> {
+			std::string &derivedName;
+			std::map<std::string, std::string> &knownCasts;
 			std::ostream& operator()(std::ostream& o) const {
 				return o;
 			}
 		};
 		
-		template<typename T> struct CastsTableEntry {
-			using TopoSorted = typename pop_front<typename ToposortBases::apply<T>::type>::type;
-			using Begin = typename begin<TopoSorted>::type;
-			using End = typename end<TopoSorted>::type;
+		template<typename TopoSorted> struct CastsTableEntry {
+			using Derived = typename at<TopoSorted, int_<0>>::type;
+			using Bases = typename pop_front<TopoSorted>::type;
+			using Begin = typename begin<Bases>::type;
+			using End = typename end<Bases>::type;
+			std::map<std::string, std::map<std::string, std::string> > &knownCasts;
 			std::ostream& operator()(std::ostream& o) const {
-				return o << "[" << readableName<T>() << ", [" << CastsTableSubEntries<Begin, End>() << "]]" ;
+				std::string derivedName = readableName<Derived>();
+				return o << "[" << std::quoted(derivedName) << ", [" << CastsTableSubEntries<Begin, End>{derivedName, knownCasts[derivedName]} << "]]" ;
 			}
 		};
 		
 		template<typename Start, typename End> struct CastsTableEntries {
 			using Here = typename deref<Start>::type;
 			using Next = typename next<Start>::type;
+			
+			std::map<std::string, std::map<std::string, std::string> > &knownCasts;
 			std::ostream& operator()(std::ostream& o) const {
-				return o << CastsTableEntry<Here>() << maybeComma<Next, End>() << CastsTableEntries<Next, End>();
+				return o << CastsTableEntry<Here>{knownCasts} << maybeSeparator<Next, End>() << CastsTableEntries<Next, End>{knownCasts};
 			}
 		};
 		
 		template<typename End> struct CastsTableEntries<End, End> {
+			std::map<std::string, std::map<std::string, std::string> > &knownCasts;
 			std::ostream& operator()(std::ostream& o) const {
 				return o;
 			}
 		};
-	}
-	
-	template<typename ...T> class CastsTable {
-		using StartTypes = boost::mpl::vector<T...>;
-		using Hierarchy = boost::mpl::transform<typename boost::mpl::begin<StartTypes>::type,
-												typename boost::mpl::end<StartTypes>::type,
-												ToposortBases>;
-		static std::map<std::string, std::string> genKnownCasts() {
-			
+		
+		struct Vec2Set {
+			template<typename Vec> struct apply {
+				using type = typename fold<Vec, set0<>, insert<_1,_2>>::type;
+			};
+		};
+		
+		struct SetUnion {
+			template<typename left, typename right> struct apply {
+				using type = typename copy<right, inserter<left, insert<_1, _2>>>::type;
+			};
+		};
+		
+		template<typename Start, typename End> struct EscapedTypeNames {
+			using Here = typename deref<Start>::type;
+			using Next = typename next<Start>::type;
+			std::ostream& operator()(std::ostream& o) const {
+				return o << "(?:" << re2::RE2::QuoteMeta(readableName<Here>()) << ")" << maybeSeparator<Next,End>("|") << EscapedTypeNames<Next, End>();
+			}
+		};
+		
+		template<typename End> struct EscapedTypeNames<End, End> {
+			std::ostream& operator()(std::ostream& o) const {
+				return o;
+			}
+		};
+		
+		template<typename KnownTypes> struct MatchKnownTypes {
+			using Begin = typename begin<KnownTypes>::type;
+			using End = typename end<KnownTypes>::type;
+			static std::string apply() {
+				std::ostringstream o;
+				o << "(" << EscapedTypeNames<Begin, End>() << ")";
+				return o.str();
+			};
+		};
+		
+		std::vector<std::string> symbolTable(boost::dll::library_info &inf) {
+			std::vector<std::string> exports = inf.symbols("__text");
+			if(exports.size()) {
+				std::cout << "Found symbols in __text: probably a Mach-O environment" << std::endl;
+			} else {
+				exports = inf.symbols(".text");
+				if(exports.size()) {
+					std::cout << "Found symbols in .text: probably an ELF environment" << std::endl;
+				} else {
+					std::cerr << "No symbols found. Might need help on this platform" << std::endl;
+				}
+			}
+			return exports;
 		}
 		
-		static const std::map<std::string, std::string>& knownCasts() {
-			static std::map<std::string, std::string> ans = genKnownCasts();
+	}
+	
+	template<boost::filesystem::path(*libraryLocation)(), typename ...T> class CastsTable {
+		using SeedTypes = boost::mpl::vector<T...>;
+		using Hierarchy = typename boost::mpl::transform<SeedTypes, ToposortBases>::type;
+		using KnownTypes = typename boost::mpl::fold<typename boost::mpl::transform<Hierarchy,detail::Vec2Set>::type, boost::mpl::set0<>, detail::SetUnion>::type;
+		using MatchKnownTypes = detail::MatchKnownTypes<KnownTypes>;
+		
+		static std::string& matchKnownTypes() {
+			static std::string ans = MatchKnownTypes::apply();
+			return ans;
+		}
+		
+		static std::map<std::string, std::map<std::string, std::string> > genKnownCasts() {
+			std::string& knownTypes = matchKnownTypes();
+			std::string matchUpcastSrc = knownTypes + re2::RE2::QuoteMeta("*") + "\\s+" + re2::RE2::QuoteMeta("CxxFFI::upcast<") + knownTypes + re2::RE2::QuoteMeta(",") + "\\s*" + knownTypes + "\\s*" + re2::RE2::QuoteMeta(">(") + knownTypes + re2::RE2::QuoteMeta("*)");
+			std::cout << "Parsing symbols via " << matchUpcastSrc << std::endl;
+			re2::RE2 matchUpcast(matchUpcastSrc);
+			
+			std::map<std::string, std::map<std::string, std::string> > knownCasts;
+			boost::dll::library_info inf(libraryLocation());
+			std::vector<std::string> exports(detail::symbolTable(inf));
+			std::string returnType, derivedType, baseType, argType;
+			for(std::string symbol : exports) {
+				std::string readable(boost::core::demangle(symbol.c_str()));
+				if(re2::RE2::FullMatch(readable, matchUpcast, &returnType, &derivedType, &baseType, &argType)) {
+					if(returnType == baseType && argType == derivedType) {
+						std::cout << "knownCasts[" << argType << "][" << returnType << "] = " << symbol << std::endl;
+						knownCasts[argType][returnType] = symbol;
+					} else {
+						std::cerr << symbol << " parses as an upcast, but the types don't match: " << readable << std::endl;
+					}
+				} else {
+					std::cout << "Skipping unmatched symbol " << symbol << " (aka " << readable << " )" << std::endl;
+				}
+			}
+			
+			return knownCasts;
+		}
+		
+		static std::map<std::string, std::map<std::string, std::string> >& knownCasts() {
+			static std::map<std::string, std::map<std::string, std::string> > ans = genKnownCasts();
 			return ans;
 		}
 		
 		static std::string genCastsTable() {
 			std::ostringstream o;
-			o << "[" << detail::CastsTableEntries<typename boost::mpl::begin<StartTypes>::type,
-			typename boost::mpl::end<StartTypes>::type>() << "]";
+			using Begin = typename boost::mpl::begin<Hierarchy>::type;
+			using End = typename boost::mpl::end<Hierarchy>::type;
+			using CastsTableEntries = detail::CastsTableEntries<Begin, End>;
+			CastsTableEntries entries{knownCasts()};
+			o << "[" << entries << "]";
 			return o.str();
 		}
 		
@@ -234,6 +340,10 @@ namespace CxxFFI {
 	public:
 		static const char * apply() {
 			return castsTable().c_str();
+		}
+		
+		static const char * knownTypes() {
+			return matchKnownTypes().c_str();
 		}
 	};
 }

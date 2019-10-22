@@ -11,8 +11,10 @@ include_directories(${Boost_INCLUDE_DIRS})
 
 include_directories(${CMAKE_SOURCE_DIR}/include)
 
+find_library(RE2_LIBRARY re2)
+
 add_library(testlib SHARED test-lib.cc test-lib.hpp include/refl_base.hpp)
 add_executable(test test.cc)
-target_link_libraries(test testlib Boost::filesystem dl)
+target_link_libraries(test testlib Boost::filesystem dl ${RE2_LIBRARY})
 target_compile_options(testlib PRIVATE -ftemplate-backtrace-limit=0)
 target_compile_options(test PRIVATE -ftemplate-backtrace-limit=0)
