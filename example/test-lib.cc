@@ -1,6 +1,6 @@
 #include "test-lib.hpp"
 
-#include <casts_table.hpp>
+#include <cxx-ffi/casts_table.hpp>
 #include <boost/dll/runtime_symbol_info.hpp>
 
 boost::filesystem::path testLoc() {

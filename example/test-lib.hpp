@@ -1,6 +1,6 @@
 #pragma once
 
-#include <refl_base.hpp>
+#include <cxx-ffi/refl_base.hpp>
 
 struct A {
 	using ReflBases = CxxFFI::DefineBases<>;
