@@ -26,10 +26,4 @@ std::shared_ptr<C> sharedCFromSharedDStar(std::shared_ptr<D> *d) {
 	return std::static_pointer_cast<C>(*d);
 }
 
-using APIFuncs = boost::mpl::vector<decltype(aRefFromDRef),decltype(sharedBFromSharedDAnd),decltype(sharedCFromSharedDStar)>;
-using APITypes = typename CxxFFI::DiscoverAPITypes::apply<APIFuncs>::type;
-using CastsTable = CxxFFI::CastsTable<testLoc, APITypes>;
-
-const char * castsTable() {
-	return CastsTable::apply();
-}
+CXXFFI_EXPOSE(castsTable, testLoc, (aRefFromDRef)(sharedBFromSharedDAnd)(sharedCFromSharedDStar));

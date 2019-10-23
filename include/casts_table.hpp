@@ -9,8 +9,6 @@
 
 #pragma once
 
-#include <iomanip>
-#include <iostream>
 #include <boost/core/demangle.hpp>
 
 #include <boost/dll/library_info.hpp>
@@ -28,7 +26,15 @@
 #include <boost/mpl/transform.hpp>
 #include <boost/mpl/vector.hpp>
 
+#include <boost/preprocessor.hpp>
+
 #include <re2/re2.h>
+
+#include <iomanip>
+
+#ifdef DEBUG
+#include <iostream>
+#endif
 
 #include <map>
 #include <memory>
@@ -155,9 +161,12 @@ namespace CxxFFI {
 				std::string castSymbol = knownCasts[baseName];
 				if (castSymbol.length()) {
 					o << "[" << std::quoted(baseName) << ", " << std::quoted(castSymbol) << "]" << maybeSeparator<Next, End>();
-				} else {
+				}
+#ifdef DEBUG
+				else {
 					std::cerr << "Warning: couldn't find upcast from " << derivedName << " to " << baseName << std::endl;
 				}
+#endif
 				return o << CastsTableSubEntries<Derived, Next, End>{derivedName, knownCasts};
 			}
 		};
@@ -237,14 +246,18 @@ namespace CxxFFI {
 		std::vector<std::string> symbolTable(boost::dll::library_info &inf) {
 			std::vector<std::string> exports = inf.symbols("__text");
 			if(exports.size()) {
+#ifdef DEBUG
 				std::cout << "Found symbols in __text: probably a Mach-O environment" << std::endl;
+#endif
 			} else {
 				exports = inf.symbols(".text");
+#ifdef DEBUG
 				if(exports.size()) {
 					std::cout << "Found symbols in .text: probably an ELF environment" << std::endl;
 				} else {
 					std::cerr << "No symbols found. Might need help on this platform" << std::endl;
 				}
+#endif
 			}
 			return exports;
 		}
@@ -270,7 +283,9 @@ namespace CxxFFI {
 		static std::map<std::string, std::map<std::string, std::string> > genKnownCasts() {
 			std::string& knownTypes = matchKnownTypes();
 			std::string matchUpcastSrc = knownTypes + re2::RE2::QuoteMeta("*") + "\\s+" + re2::RE2::QuoteMeta("CxxFFI::upcast<") + knownTypes + re2::RE2::QuoteMeta(",") + "\\s*" + knownTypes + "\\s*" + re2::RE2::QuoteMeta(">(") + knownTypes + re2::RE2::QuoteMeta("*)");
+#ifdef DEBUG
 			std::cout << "Parsing symbols via " << matchUpcastSrc << std::endl;
+#endif
 			re2::RE2 matchUpcast(matchUpcastSrc);
 			
 			std::map<std::string, std::map<std::string, std::string> > knownCasts;
@@ -281,14 +296,22 @@ namespace CxxFFI {
 				std::string readable(boost::core::demangle(symbol.c_str()));
 				if(re2::RE2::FullMatch(readable, matchUpcast, &returnType, &derivedType, &baseType, &argType)) {
 					if(returnType == baseType && argType == derivedType) {
+#ifdef DEBUG
 						std::cout << "knownCasts[" << argType << "][" << returnType << "] = " << symbol << std::endl;
+#endif
 						knownCasts[argType][returnType] = symbol;
-					} else {
+					}
+#ifdef DEBUG
+					else {
 						std::cerr << symbol << " parses as an upcast, but the types don't match: " << readable << std::endl;
 					}
-				} else {
+#endif
+				}
+#ifdef DEBUG
+				else {
 					std::cout << "Skipping unmatched symbol " << symbol << " (aka " << readable << " )" << std::endl;
 				}
+#endif
 			}
 			
 			return knownCasts;
@@ -301,8 +324,8 @@ namespace CxxFFI {
 		
 		static std::string genCastsTable() {
 			std::ostringstream o;
-			using Begin = typename boost::mpl::begin<Hierarchy>::type;
-			using End = typename boost::mpl::end<Hierarchy>::type;
+			using Begin = typename boost::mpl::begin<HierarchyFiltered>::type;
+			using End = typename boost::mpl::end<HierarchyFiltered>::type;
 			using CastsTableEntries = detail::CastsTableEntries<Begin, End>;
 			CastsTableEntries entries{knownCasts()};
 			o << "[" << entries << "]";
@@ -385,4 +408,15 @@ namespace CxxFFI {
 			using type = typename boost::mpl::copy_if<SeedTypes, detail::APIFilterApplier, boost::mpl::inserter<boost::mpl::set0<>, boost::mpl::insert<boost::mpl::_1, boost::mpl::_2>>>::type;
 		};
 	};
+}
+
+#define _CXXFFI_DECLTYPE_PASTER(R, _, ELEM) (decltype(ELEM))
+#define CXXFFI_EXPOSE(NAME, LOC, XS) \
+extern "C" { \
+	const char* NAME(){\
+		using APIFuncs = boost::mpl::vector< BOOST_PP_SEQ_ENUM(BOOST_PP_SEQ_FOR_EACH(_CXXFFI_DECLTYPE_PASTER, _, XS)) >;\
+		using APITypes = typename CxxFFI::DiscoverAPITypes::apply<APIFuncs>::type;\
+		using CastsTable = CxxFFI::CastsTable<LOC, APITypes>;\
+		return CastsTable::apply();\
+	}\
 }

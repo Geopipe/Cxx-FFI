@@ -17,5 +17,3 @@ struct C : virtual A {
 struct D : B, C {
 	using ReflBases = CxxFFI::DefineBases<B, C>;
 };
-
-const char * castsTable();
