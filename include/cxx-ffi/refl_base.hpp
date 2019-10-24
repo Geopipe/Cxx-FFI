@@ -12,14 +12,28 @@
 #include <boost/mpl/transform.hpp>
 #include <boost/mpl/vector.hpp>
 
+#include <boost/tti/has_type.hpp>
+
 #include <memory>
 
 namespace CxxFFI {
 	
+	BOOST_TTI_HAS_TYPE(ReflBases);
+	
 	template<typename ...Bases> using DefineBases = boost::mpl::vector<Bases...>;
 	
+	namespace detail {
+		template<typename T, bool b = has_type_ReflBases<T>::value> struct MaybeBases {
+			using type = typename T::ReflBases;
+		};
+		
+		template<typename T> struct MaybeBases<T, false> {
+			using type = DefineBases<>;
+		};
+	}
+	
 	template<typename T> struct ReflBases {
-		using type = typename T::ReflBases;
+		using type = typename detail::MaybeBases<T>::type;
 	};
 	
 	template<template<typename Tp> class PType, typename T> struct CoVariantBases {

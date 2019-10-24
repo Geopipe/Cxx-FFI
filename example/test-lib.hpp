@@ -2,9 +2,7 @@
 
 #include <cxx-ffi/refl_base.hpp>
 
-struct A {
-	using ReflBases = CxxFFI::DefineBases<>;
-};
+struct A {};
 
 struct B : virtual A {
 	using ReflBases = CxxFFI::DefineBases<A>;
