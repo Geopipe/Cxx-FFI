@@ -153,7 +153,7 @@ namespace CxxFFI {
 	
 	template<template<typename Tp> class PType, typename T> struct SimpleTemplateNameRewriter {
 		static const re2::RE2& simpleTemplateNameRegExp() {
-			static re2::RE2 ans("^([^<]+<\\s*)(" + re2::RE2::QuoteMeta(detail::readableName<T>()) + ")(\\s*>)$");
+			static re2::RE2 ans("^([^<]+<\\s*)(" + re2::RE2::QuoteMeta(detail::readableName<T>()) + ")\\s*(>)$");
 			return ans;
 		}
 		
