@@ -22,6 +22,7 @@
 #include <boost/mpl/erase_key.hpp>
 #include <boost/mpl/key_type.hpp>
 #include <boost/mpl/pop_front.hpp>
+#include <boost/mpl/push_front.hpp>
 #include <boost/mpl/set.hpp>
 #include <boost/mpl/transform.hpp>
 #include <boost/mpl/vector.hpp>
@@ -408,13 +409,26 @@ namespace CxxFFI {
 			using type = typename boost::mpl::copy_if<SeedTypes, detail::APIFilterApplier, boost::mpl::inserter<boost::mpl::set0<>, boost::mpl::insert<boost::mpl::_1, boost::mpl::_2>>>::type;
 		};
 	};
+	
+	namespace detail {
+		using namespace boost::mpl;
+		template<typename ...Args> struct VariadicVectorConstructor {
+			using type = vector0<>;
+		};
+		
+		template<typename Head, typename ...Tail> struct VariadicVectorConstructor<Head, Tail...> {
+			using type = typename push_front<typename VariadicVectorConstructor<Tail...>::type, Head>::type;
+		};
+	}
+	
+	template<typename ...Args> using Vector = typename detail::VariadicVectorConstructor<Args...>::type;
 }
 
 #define _CXXFFI_DECLTYPE_PASTER(R, _, ELEM) (decltype(ELEM))
 #define CXXFFI_EXPOSE(NAME, LOC, XS) \
 extern "C" { \
 	const char* NAME(){\
-		using APIFuncs = boost::mpl::vector< BOOST_PP_SEQ_ENUM(BOOST_PP_SEQ_FOR_EACH(_CXXFFI_DECLTYPE_PASTER, _, XS)) >;\
+		using APIFuncs = CxxFFI::Vector< BOOST_PP_SEQ_ENUM(BOOST_PP_SEQ_FOR_EACH(_CXXFFI_DECLTYPE_PASTER, _, XS)) >;\
 		using APITypes = typename CxxFFI::DiscoverAPITypes::apply<APIFuncs>::type;\
 		using CastsTable = CxxFFI::CastsTable<LOC, APITypes>;\
 		return CastsTable::apply();\
