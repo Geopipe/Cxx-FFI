@@ -138,14 +138,77 @@ namespace CxxFFI {
 	}
 	
 	namespace detail {
+		template<typename T> std::string readableName() {
+			return boost::core::demangle(typeid(T).name());
+		}
+	}
+	
+	template<typename T> struct NameRewriter {
+		// Default operation is the identity
+		static std::string apply(std::string name) {
+			return name;
+		}
+	};
+	
+	
+	template<template<typename Tp> class PType, typename T> struct SimpleTemplateNameRewriter {
+		static const re2::RE2& simpleTemplateNameRegExp() {
+			static re2::RE2 ans("^([^<]+<\\s*)(" + re2::RE2::QuoteMeta(detail::readableName<T>()) + ")(\\s*>)$");
+			return ans;
+		}
+		
+		static std::string apply(std::string name) {
+			std::string innerReplace = NameRewriter<T>::apply(detail::readableName<T>());
+			std::string ret;
+			if( re2::RE2::Extract(name, simpleTemplateNameRegExp(), "\\1" + innerReplace + "\\3", &ret)  ) {
+				return ret;
+			} else {
+#ifdef DEBUG
+				
+				std::cerr << "Couldn't parse template, but SimpleTemplateNameRewriter is opt-in" << std::endl;
+				abort();
+#else
+				return name;
+#endif
+			}
+		}
+	};
+	
+	namespace detail {
+		static inline const re2::RE2& stdABIFlatteningNameRegExp() {
+			static re2::RE2 ans("^(" + re2::RE2::QuoteMeta("std::__1") + ")(.+)");
+			return ans;
+		}
+	}
+	
+	template<typename T> struct StdABIFlatteningNameRewriter {
+		static std::string apply(std::string name) {
+			std::string ret;
+			if( re2::RE2::Extract(name, detail::stdABIFlatteningNameRegExp(), "std\\2", &ret ) ) {
+				return ret;
+			} else {
+#ifdef DEBUG
+				std::cerr << "Couldn't parse template, but StdABIFlatteningNameRewriter is opt-in" << std::endl;
+				abort();
+#else
+				return name;
+#endif
+			}
+		}
+	};
+	
+	template<typename T> struct NameRewriter<std::shared_ptr<T>> {
+		using FullT = std::shared_ptr<T>;
+		static std::string apply(std::string name) {
+			return StdABIFlatteningNameRewriter<std::shared_ptr<T>>::apply(SimpleTemplateNameRewriter<std::shared_ptr, T>::apply(name));
+		}
+	};
+	
+	namespace detail {
 		using namespace boost::mpl;
 		
 		template<typename Start, typename End> std::string maybeSeparator(std::string sep = ", ") {
 			return std::is_same<Start, End>::value ? "" : sep;
-		}
-		
-		template<typename T> std::string readableName() {
-			return boost::core::demangle(typeid(T).name());
 		}
 		
 		template<typename Derived, typename Start, typename End> struct CastsTableSubEntries {
@@ -161,7 +224,7 @@ namespace CxxFFI {
 				std::string baseName = readableName<Here>();
 				std::string castSymbol = knownCasts[baseName];
 				if (castSymbol.length()) {
-					o << "[" << std::quoted(baseName) << ", " << std::quoted(castSymbol) << "]" << maybeSeparator<Next, End>();
+					o << "\n\t\t" << std::quoted(NameRewriter<Here>::apply(baseName)) << " : " << std::quoted(castSymbol) << maybeSeparator<Next, End>();
 				}
 #ifdef DEBUG
 				else {
@@ -187,7 +250,7 @@ namespace CxxFFI {
 			std::map<std::string, std::map<std::string, std::string> > &knownCasts;
 			std::ostream& operator()(std::ostream& o) const {
 				std::string derivedName = readableName<Derived>();
-				return o << "[" << std::quoted(derivedName) << ", [" << CastsTableSubEntries<Derived, Begin, End>{derivedName, knownCasts[derivedName]} << "]]" ;
+				return o << "\n\t" << "" << std::quoted(NameRewriter<Derived>::apply(derivedName)) << " : {" << CastsTableSubEntries<Derived, Begin, End>{derivedName, knownCasts[derivedName]} << "}" ;
 			}
 		};
 		
@@ -329,7 +392,7 @@ namespace CxxFFI {
 			using End = typename boost::mpl::end<HierarchyFiltered>::type;
 			using CastsTableEntries = detail::CastsTableEntries<Begin, End>;
 			CastsTableEntries entries{knownCasts()};
-			o << "[" << entries << "]";
+			o << "{" << entries << "}";
 			return o.str();
 		}
 		
