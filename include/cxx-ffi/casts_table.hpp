@@ -94,26 +94,25 @@ namespace CxxFFI {
 			using type = typename push_front<AccumulatedTail, Here>::type;
 		};
 		
+		template<typename Here, typename WIP, typename Done, bool done = contains<Done, Here>::type::value> class VisitBasesJointIf {
+		public:
+			using FinalWIP = WIP;
+			using FinalDone = Done;
+			using type = vector<>;
+		};
+
+		template<typename Here, typename WIP, typename Done> class VisitBasesJointIf<Here, WIP, Done, false> {
+			using VisitLoopThunk = VisitLoop<Here, WIP, Done>;
+		public:
+			using FinalWIP = typename VisitLoopThunk::FinalWIP;
+			using FinalDone = typename VisitLoopThunk::FinalDone;
+			using type = typename VisitLoopThunk::type;
+		};
+
 		template<typename Here, typename WIP, typename Done>
 		class VisitBases {
 			static_assert(!contains<WIP, Here>::value, "Cycle while toposorting base classes. Your inheritance is broken");
-			template<bool done> class JointIf {
-			public:
-				using FinalWIP = WIP;
-				using FinalDone = Done;
-				using type = vector<>;
-			};
-			
-			template<> class JointIf<false> {
-				using VisitLoopThunk = VisitLoop<Here, WIP, Done>;
-			public:
-				using FinalWIP = typename VisitLoopThunk::FinalWIP;
-				using FinalDone = typename VisitLoopThunk::FinalDone;
-				using type = typename VisitLoopThunk::type;
-			};
-			
-			using DoneHere = typename contains<Done, Here>::type;
-			using IfThunk = JointIf<DoneHere::value>;
+			using IfThunk = VisitBasesJointIf<Here, WIP, Done>;
 		public:
 			using FinalWIP = typename IfThunk::FinalWIP;
 			using FinalDone = typename IfThunk::FinalDone;
