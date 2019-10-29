@@ -219,7 +219,7 @@ namespace CxxFFI {
 			std::string &derivedName;
 			std::map<std::string, std::string> &knownCasts;
 			std::ostream& operator()(std::ostream& o) const {
-				constexpr const CastFunc instantiateMe = &upcast<Derived, Here>;
+				static constexpr const CastFunc instantiateMe __attribute__((used)) = &upcast<Derived, Here>;
 				static_assert(instantiateMe != nullptr, "The compiler is optimizing badly");
 				std::string baseName = readableName<Here>();
 				std::string castSymbol = knownCasts[baseName];
