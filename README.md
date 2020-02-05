@@ -3,7 +3,7 @@ A utility library to support using C++ libraries through a C FFI, available unde
 Please compile the examples using CMake to see how it works.
 Depends on RE2 and Boost.
 
-The implementation depends heavily on template metaprogramming, and runs some nontrivial algorithms at compile time, including a mergesort variant, and a topological sort.
+The implementation depends heavily on template metaprogramming, and runs some nontrivial algorithms at compile time, including a topological sort.
 While the code attempts to be efficient, if compile times are a concern, you may wish to limit its use to a standalone dynamic library which links in all the other libraries you wish to expose in your FFI.
 
 The `ReflBases`, `APIFilter`, and `NameRewriter` templates all provide entry points for customization (and integration with libraries whose source code and inheritance hierarchies are outside your control).
