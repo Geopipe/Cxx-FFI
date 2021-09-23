@@ -276,7 +276,7 @@ namespace CxxFFI {
 		
 		/****************************************************************
 		 * Recursive functor to emit the value associated with JSON
-		 * key-value pair represented by a`CastsTableEntry`. 
+		 * key-value pair represented by a `CastsTableEntry`. 
 		 * @tparam Derived The class whose base classes we are traversing.
 		 * @tparam Start The base-class metaiterator we are starting from.
 		 * @tparam End The past-the-end base-class metaiterator.
@@ -624,9 +624,9 @@ namespace CxxFFI {
 		using type = typename APIFilter<T>::type;
 	};
 	
-	/// `boost::mpl`'s convention for metafunctions requires a wrapper struct, see `ExtractFuncTypes::apply`.
+	/// `boost::mpl`'s convention for metafunctions requires a wrapper struct, see `ExtractFuncTypes::apply<R(Args...)>`.
 	struct ExtractFuncTypes {
-		/// Don't apply this metafunction to non-function types.
+		/// Don't apply this metafunction to non-function types, see specialization (`ExtractFuncTypes::apply<R(Args...)>`) for detailed notes..
 		template<typename T> class apply {
 			static_assert(std::is_function<T>::value, "Can't use ExtractFuncTypes on non-function-type");
 		};
@@ -709,12 +709,12 @@ namespace CxxFFI {
  * static boost::filesystem::path dllLoc() {
  * 	 return boost::dll::this_line_location();
  * }
+ * ```
+ * </pre>
  * @param XS A 
  * boost preprocessor sequence](https://www.boost.org/doc/libs/1_73_0/libs/preprocessor/doc/data/sequences.html)
  * enumerating the API functions from whose signatures the set of relevant
  * API classes should be extracted.
- * ```
- * </pre>
  **************************************************************/
 #define CXXFFI_EXPOSE(NAME, LOC, XS) \
 extern "C" { \
