@@ -590,6 +590,7 @@ namespace CxxFFI {
 	template<typename T> struct APIFilter; // Forward declaration to allow use in following MPL meta-func
 	
 	namespace detail {
+		/// Convert `APIFilter` to the `boost::mpi` convention of metafunctions requiring a wrapper struct.
 		struct APIFilterApplier {
 			template<typename T> struct apply {
 				using type = typename APIFilter<T>::type;
@@ -597,52 +598,85 @@ namespace CxxFFI {
 		};
 	};
 	
-	// Should only be used on bare types, so DiscoverAPITypes needs to enforce that, via ExtractFuncTypes.
+	/******************************************************************
+	 * A metafunction to filter types which should not appear in the 
+	 * generated casts table. The default implementation accepts
+	 * a class if any of its base classes are accepted.
+	 * 
+	 * Client code can define customizations via specialization.
+	 * @tparam T The type to accepted or rejected for inclusion in the casts table.
+	 * @pre Should only be used on bare types, so client code must enforce that, 
+	 * `via ExtractFuncTypes`.
+	 * @pre If relying on default implementation, client code must still provide 
+	 * specializations for at least the set of base-classes.
+	 ******************************************************************/
 	template<typename T> struct APIFilter {
 	private:
-		using Bases = typename CxxFFI::ReflBases<T>::type;
-		using BasesPass = typename boost::mpl::transform<Bases,detail::APIFilterApplier>::type;
+		using Bases = typename CxxFFI::ReflBases<T>::type; ///< Access `T`'s reflected base types.
+		using BasesPass = typename boost::mpl::transform<Bases,detail::APIFilterApplier>::type; ///< Recursively apply `APIFilter` to each type in `Bases`.
 	public:
+		/// boost::mpl:bool_<false> if rejected or boost::mpl::bool_<true> if accepted.
 		using type = typename boost::mpl::fold<BasesPass, boost::mpl::bool_<false>, boost::mpl::or_<boost::mpl::_1, boost::mpl::_2>>::type;
 	};
 	
+	/// Specialization of `APIFilter` passing `std::shared_ptr<T>` if `T` passes.
 	template<typename T> struct APIFilter<std::shared_ptr<T>> {
 		using type = typename APIFilter<T>::type;
 	};
 	
+	/// `boost::mpl`'s convention for metafunctions requires a wrapper struct, see `ExtractFuncTypes::apply`.
 	struct ExtractFuncTypes {
+		/// Don't apply this metafunction to non-function types.
 		template<typename T> class apply {
 			static_assert(std::is_function<T>::value, "Can't use ExtractFuncTypes on non-function-type");
 		};
 		
+		/******************************************************************
+		 * A metafunction to extract (as a `boost::mpl::vector`) the types 
+		 * appearing in a function signature, stripped of cv-qualification, 
+		 * references, pointers, and array-extents.
+		 ******************************************************************/
 		template<typename R, typename ...Args> class apply<R(Args...)> {
-			using RawTypes = boost::mpl::vector<R, Args...>;;
+			using RawTypes = boost::mpl::vector<R, Args...>; ///< The types appearing in the signature
 		public:
+			/// The result vector
 			using type = typename boost::mpl::transform<RawTypes, detail::BareType>::type;
 		};
 	};
 	
+	/// `boost::mpl`'s convention for metafunctions requires a wrapper struct, see `DiscoverAPITypes::apply`.
 	struct DiscoverAPITypes {
+		/******************************************************************
+		 * A metafunction to extract all of the unique types (up to 
+		 * equivalence under `detail::BareType`) appearing in the signatures
+		 * of some set of function types.
+		 * @tparam Funcs The `boost::mpl::vector` of function types to examine
+		 ******************************************************************/
 		template<typename Funcs> class apply {
-			using FuncTypes = typename boost::mpl::transform<Funcs, ExtractFuncTypes>::type;
-			using UniqueFuncTypes = typename boost::mpl::transform<FuncTypes, detail::Vec2Set>::type;
-			using SeedTypes = typename boost::mpl::fold<UniqueFuncTypes, boost::mpl::set0<>, detail::SetUnion>::type;
+			using FuncTypes = typename boost::mpl::transform<Funcs, ExtractFuncTypes>::type; ///< Extract the bare types from each function type, result is a vector of vectors
+			using UniqueFuncTypes = typename boost::mpl::transform<FuncTypes, detail::Vec2Set>::type; ///< Convert the inner vectors to sets
+			using SeedTypes = typename boost::mpl::fold<UniqueFuncTypes, boost::mpl::set0<>, detail::SetUnion>::type; ///< Union the inner sets into a single set
 		public:
+			/// Return the elements of `SeedTypes` which pass the `APIFilter`.
 			using type = typename boost::mpl::copy_if<SeedTypes, detail::APIFilterApplier, boost::mpl::inserter<boost::mpl::set0<>, boost::mpl::insert<boost::mpl::_1, boost::mpl::_2>>>::type;
 		};
 	};
 	
 	namespace detail {
 		using namespace boost::mpl;
+		/// Metafunction constructing an empty `boost::mpl::vector` (recursive base case)
 		template<typename ...Args> struct VariadicVectorConstructor {
 			using type = vector0<>;
 		};
 		
+		/// Recursive metafunction to construct the `boost::mpl::vector` consisting of `Head` followed by `Tail...`.
 		template<typename Head, typename ...Tail> struct VariadicVectorConstructor<Head, Tail...> {
+			/// Construct the `Tail...` and then prepend `Head`.
 			using type = typename push_front<typename VariadicVectorConstructor<Tail...>::type, Head>::type;
 		};
 	}
 	
+	/// For some goofy reason, `boost::mpl::vector`s have to be constructed by adding elements one at a time, so here is a convenience wrapper as a variadic template.
 	template<typename ...Args> using Vector = typename detail::VariadicVectorConstructor<Args...>::type;
 }
 
